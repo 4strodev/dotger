@@ -15,17 +15,17 @@ echo $HOME
 ```
 
 Inside this folder I will create another folder named `neovim`.
-In this folder I will move all my neovim files. Now create a file named `.dotger.toml`
+In this folder I will move all my neovim files under a `nvim` folder. Now create a file named `.dotger.toml`
 
 ```toml
 [destination]
-path = "~/.config/nvim"
+path = "<home path>/.config" # replace `home path` by your home path
 mkdir = true # create destination folder if not exists
 ```
 
 ```sh
 # link entry
-# under $HOME/.dotfiles/neovim
+# under $HOME/.dotfiles
 dotger link neovim
 ```
 
