@@ -1,13 +1,16 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"os"
 
+	"github.com/4strodev/dotger/features/entries/infrastructure"
+	"github.com/4strodev/dotger/shared/injector"
 	"github.com/urfave/cli/v2"
 )
 
 func main() {
+	inject := injector.NewInjector()
 	app := &cli.App{
 		Name: "dotger",
 		Authors: []*cli.Author{
@@ -15,12 +18,13 @@ func main() {
 				Name: "4strodev",
 			},
 		},
-		Usage: "dotger",
+		Usage: "Centralize and manage your dotfiles",
 		Description: "A dotfiles manager inspired by stow",
-		Action: func(ctx *cli.Context) error {
-			fmt.Println("Execute main action")
-			return nil
+		Commands: []*cli.Command{
+			infrastructure.GetLinkCommand(inject),
 		},
 	}
-	app.Run(os.Args)
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
+	}
 }
