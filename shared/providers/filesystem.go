@@ -21,6 +21,11 @@ func NewFileSystem(fs afero.Fs) *FileSystem {
 	}
 }
 
+// Checks if a file, directory or symlink exists
+func (fs *FileSystem) Exists(path string) (bool, error) {
+	return afero.Exists(fs.fs, path)
+}
+
 // Read a file and return their content. If the file is a symlink it
 // follows the link to the original file
 func (fs *FileSystem) ReadFile(path string) ([]byte, error) {

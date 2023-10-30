@@ -21,7 +21,6 @@ In this folder I will move all my neovim files. Now create a file named `.dotger
 [destination]
 path = "~/.config/nvim"
 mkdir = true # create destination folder if not exists
-recursive = true # create parent folders if it doesn't exists (only valid if mkdir is true)
 ```
 
 ```sh

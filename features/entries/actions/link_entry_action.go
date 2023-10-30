@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/4strodev/dotger/features/entries/domain"
@@ -10,25 +11,42 @@ import (
 	"github.com/spf13/afero"
 )
 
-func LinkEntryAction(inject injector.Injector, ctx context.Context, entry domain.Entry) error {
+func LinkEntry(inject injector.Injector, ctx context.Context, source string, entry domain.EntryConfig) error {
 	fs := inject.FileSystem.GetFs()
-	stats, err := fs.Stat(entry.Source)
+	exists, err := inject.FileSystem.Exists(entry.Destination.Path)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if !entry.Destination.Mkdir {
+			return fmt.Errorf("'%s' does not exist", entry.Destination.Path)
+		} else {
+			err = fs.Mkdir(entry.Destination.Path, os.ModeDir | os.ModePerm)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	stats, err := fs.Stat(source)
 	if err != nil {
 		return err
 	}
 	if !stats.IsDir() {
-		return fmt.Errorf("%s is not a directory", entry.Source)
+		return fmt.Errorf("%s is not a directory", source)
 	}
 
-
-	files, err := afero.ReadDir(fs, entry.Source)
+	files, err := afero.ReadDir(fs, source)
 	if err != nil {
 		return err
 	}
 
 	for _, file := range files {
-		origin := filepath.Join(entry.Source, file.Name())
-		target := filepath.Join(entry.Destination, file.Name())
+		if file.Name() == ".dotger.toml" {
+			continue
+		}
+		origin := filepath.Join(source, file.Name())
+		target := filepath.Join(entry.Destination.Path, file.Name())
 		err := inject.FileSystem.Symlink(origin, target)
 		if err != nil {
 			return err
