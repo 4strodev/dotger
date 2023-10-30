@@ -21,6 +21,23 @@ func NewFileSystem(fs afero.Fs) *FileSystem {
 	}
 }
 
+// Read a file and return their content. If the file is a symlink it
+// follows the link to the original file
+func (fs *FileSystem) ReadFile(path string) ([]byte, error) {
+	var content []byte
+	file, err := fs.fs.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	content, err = afero.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return content, nil
+}
+
 // Checks if provided path is a symlink
 // if the underlying file system does not admit
 // symlinks it will return false
