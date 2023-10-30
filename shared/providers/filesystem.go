@@ -21,6 +21,9 @@ func NewFileSystem(fs afero.Fs) *FileSystem {
 	}
 }
 
+// Checks if provided path is a symlink
+// if the underlying file system does not admit
+// symlinks it will return false
 func (fs *FileSystem) IsSymlink(target string) bool {
 	lstater, ok := fs.fs.(afero.Lstater)
 	if !ok {
@@ -38,6 +41,7 @@ func (fs *FileSystem) IsSymlink(target string) bool {
 	return stats.Mode()&os.ModeSymlink == os.ModeSymlink
 }
 
+// Given a path pointing to a symlink returns the target of that symlink
 func (fs *FileSystem) ReadLink(target string) (string, error) {
 	linkReader, ok := fs.fs.(afero.LinkReader)
 	if !ok {
@@ -46,6 +50,7 @@ func (fs *FileSystem) ReadLink(target string) (string, error) {
 	return linkReader.ReadlinkIfPossible(target)
 }
 
+// Creates a symlink
 func (fs *FileSystem) Symlink(oldname, symlink string) error {
 	linker, ok := fs.fs.(afero.Linker)
 	if !ok {
@@ -60,6 +65,7 @@ func (fs *FileSystem) Symlink(oldname, symlink string) error {
 	return nil
 }
 
+// Return the underlying file system
 func (fs *FileSystem) GetFs() afero.Fs {
 	return fs.fs
 }
@@ -74,6 +80,23 @@ func (fs *FileSystem) CopyDir(ctx context.Context, origin string, destination st
 		originStat, err := fs.fs.Stat(origin)
 		if err != nil {
 			reject(err)
+			return
+		}
+
+		if fs.IsSymlink(origin) {
+			target, err := fs.ReadLink(origin)
+			if err != nil {
+				reject(err)
+				return
+			}
+
+			err = fs.Symlink(target, destination)
+			if err != nil {
+				reject(err)
+				return
+			}
+
+			resolve(struct{}{})
 			return
 		}
 
