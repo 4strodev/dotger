@@ -8,9 +8,6 @@ import (
 	"github.com/4strodev/dotger/features/entries/actions"
 	"github.com/4strodev/dotger/features/entries/domain"
 	"github.com/4strodev/dotger/shared/injector"
-	"github.com/knadh/koanf"
-	"github.com/knadh/koanf/parsers/toml"
-	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/urfave/cli/v2"
 )
 
@@ -55,16 +52,18 @@ func GetLinkCommand(inject injector.Injector) *cli.Command {
 			}
 
 			// Unmarshalling config file
-			var entryConfig domain.EntryConfig
-			k := koanf.New(".")
-			k.Load(rawbytes.Provider(content), toml.Parser())
-			err = k.Unmarshal("", &entryConfig)
+			configFileParser := domain.EntryConfigFileParser{}
+			entryConfig, err := configFileParser.Parse(string(content))
 			if err != nil {
 				return err
 			}
 
 			// Getting current working directory
-			err = actions.LinkEntry(inject, ctx.Context, entryPath, entryConfig)
+			absoluteEntryPath, err := filepath.Abs(entryPath)
+			if err != nil {
+				return err
+			}
+			err = actions.LinkEntry(inject, ctx.Context, absoluteEntryPath, entryConfig)
 			if err != nil {
 				return err
 			}
