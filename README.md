@@ -49,6 +49,6 @@ to get environment variables. Look this example
 ```toml
 # .dotger.toml
 [destination]
-path = "{{ getenv "HOME" }}/.config" # this will result on /home/user/.config
+path = '{{ getenv "HOME" }}/.config' # this will result on /home/user/.config
 mkdir = true # create destination folder if not exists
 ```
