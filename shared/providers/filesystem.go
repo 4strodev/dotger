@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sync"
 
-	promise "github.com/4strodev/promise/pkg"
 	"github.com/spf13/afero"
 )
 
@@ -96,146 +96,139 @@ func (fs *FileSystem) GetFs() afero.Fs {
 // creating destination directory. If the parent directory of
 // destination does not exits it will return an error.
 // If destination directory already exits, it return an error.
-func (fs *FileSystem) CopyDir(ctx context.Context, origin string, destination string) *promise.Promise[struct{}] {
-	return promise.New(func(resolve func(struct{}), reject func(error)) {
-		// Checking if provided paths exists
-		originStat, err := fs.fs.Stat(origin)
+func (fs *FileSystem) CopyDir(ctx context.Context, origin string, destination string) error {
+	// Checking if provided paths exists
+	originStat, err := fs.fs.Stat(origin)
+	if err != nil {
+		return err
+	}
+
+	if fs.IsSymlink(origin) {
+		target, err := fs.ReadLink(origin)
 		if err != nil {
-			reject(err)
-			return
+			return err
 		}
 
-		if fs.IsSymlink(origin) {
-			target, err := fs.ReadLink(origin)
-			if err != nil {
-				reject(err)
-				return
-			}
-
-			err = fs.Symlink(target, destination)
-			if err != nil {
-				reject(err)
-				return
-			}
-
-			resolve(struct{}{})
-			return
-		}
-
-		// Getting destination status
-		_, err = fs.fs.Stat(destination)
-		if err == nil {
-			reject(fmt.Errorf("%s already exists", destination))
-			return
-		}
-
-		// If cannot get status for some other reason
-		// rather than directory does not exist then
-		// reutrn the error
-		if !os.IsNotExist(err) {
-			reject(err)
-			return
-		}
-
-		// If destination directory does not exits
-		// create a new one
-		err = fs.fs.Mkdir(destination, os.ModePerm)
+		err = fs.Symlink(target, destination)
 		if err != nil {
-			reject(err)
-			return
+			return err
 		}
 
-		if !originStat.IsDir() {
-			reject(fmt.Errorf("%s is not a directory", origin))
-			return
-		}
+		return nil
+	}
 
-		// Reading files of origin
-		files, err := afero.ReadDir(fs.fs, origin)
-		if err != nil {
-			reject(err)
-			return
-		}
+	// Getting destination status
+	_, err = fs.fs.Stat(destination)
+	if err == nil {
+		return fmt.Errorf("%s already exists", destination)
+	}
 
-		// Copying files
-		promises := make([]*promise.Promise[struct{}], 0)
-		for _, file := range files {
+	// If cannot get status for some other reason
+	// rather than directory does not exist then
+	// reutrn the error
+	if !os.IsNotExist(err) {
+		return err
+	}
+
+	// If destination directory does not exits
+	// create a new one
+	err = fs.fs.Mkdir(destination, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	if !originStat.IsDir() {
+		return fmt.Errorf("%s is not a directory", origin)
+	}
+
+	// Reading files of origin
+	files, err := afero.ReadDir(fs.fs, origin)
+	if err != nil {
+		return err
+	}
+
+	// Copying files
+	wg := sync.WaitGroup{}
+	errChannel := make(chan error)
+
+	// Dispatching IO operations
+	for _, file := range files {
+		wg.Add(1)
+		go func(file os.FileInfo, errChannel chan error) {
+			defer wg.Done()
 			originName := path.Join(origin, file.Name())
 			destinationName := path.Join(destination, file.Name())
+			var err error
 			if file.IsDir() {
-				prom := fs.CopyDir(ctx, originName, destinationName)
-				promises = append(promises, prom)
+				err = fs.CopyDir(ctx, originName, destinationName)
 			} else {
-				prom := fs.CopyFile(originName, destinationName)
-				promises = append(promises, prom)
+				err = fs.CopyFile(originName, destinationName)
 			}
-		}
 
-		_, err = promise.MergeAll(ctx, promises...).Await(ctx)
-		if err != nil {
-			reject(err)
-			return
-		}
-		resolve(struct{}{})
-	})
+			errChannel <- err
+
+		}(file, errChannel)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChannel)
+	}()
+
+	errorList := []error{}
+	for receivedError := range errChannel {
+		errorList = append(errorList, receivedError)
+	}
+
+	return errors.Join(errorList...)
 }
 
 // CopyFile copies origin file to destination path
-func (fs *FileSystem) CopyFile(origin string, destination string) *promise.Promise[struct{}] {
-	return promise.New(func(resolve func(struct{}), reject func(error)) {
-		// Checking if origin file exists
-		originStat, err := fs.fs.Stat(origin)
-		if err != nil {
-			reject(err)
-			return
-		}
+func (fs *FileSystem) CopyFile(origin string, destination string) error {
+	// Checking if origin file exists
+	originStat, err := fs.fs.Stat(origin)
+	if err != nil {
+		return err
+	}
 
-		// If origin is a symlink then create a new symlink
-		if fs.IsSymlink(origin) {
-			target, err := fs.ReadLink(origin)
-			if err != nil {
-				reject(err)
-				return
-			}
-			err = fs.Symlink(target, destination)
-			if err != nil {
-				reject(err)
-				return
-			}
-			resolve(struct{}{})
-			return
-		}
-
-		// If origin is a regular file then copy content
-		// Opening origin file
-		originFile, err := fs.fs.Open(origin)
+	// If origin is a symlink then create a new symlink
+	if fs.IsSymlink(origin) {
+		target, err := fs.ReadLink(origin)
 		if err != nil {
-			reject(err)
-			return
+			return err
 		}
-		defer originFile.Close()
-
-		// Creating detination file
-		destinationFile, err := fs.fs.OpenFile(destination, os.O_CREATE|os.O_RDWR|os.O_TRUNC, originStat.Mode())
-		defer destinationFile.Close()
+		err = fs.Symlink(target, destination)
 		if err != nil {
-			reject(err)
-			return
+			return err
 		}
+		return nil
+	}
 
-		// Reading origin file content
-		content, err := afero.ReadFile(fs.fs, origin)
-		if err != nil {
-			reject(err)
-			return
-		}
-		// Writing content to destination file
-		_, err = destinationFile.Write(content)
-		if err != nil {
-			reject(err)
-			return
-		}
+	// If origin is a regular file then copy content
+	// Opening origin file
+	originFile, err := fs.fs.Open(origin)
+	if err != nil {
+		return err
+	}
+	defer originFile.Close()
 
-		resolve(struct{}{})
-	})
+	// Creating detination file
+	destinationFile, err := fs.fs.OpenFile(destination, os.O_CREATE|os.O_RDWR|os.O_TRUNC, originStat.Mode())
+	defer destinationFile.Close()
+	if err != nil {
+		return err
+	}
+
+	// Reading origin file content
+	content, err := afero.ReadFile(fs.fs, origin)
+	if err != nil {
+		return err
+	}
+	// Writing content to destination file
+	_, err = destinationFile.Write(content)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"context"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -26,7 +25,7 @@ func TestSymlink(t *testing.T) {
 	err = fileSystem.Symlink(original, symlink)
 	assert.NoError(t, err)
 
-	// Opening symlink 
+	// Opening symlink
 	newFile, err := fileSystem.GetFs().Open(symlink)
 	assert.NoError(t, err)
 	defer newFile.Close()
@@ -51,10 +50,9 @@ func TestCopyFile(t *testing.T) {
 	_, err = file.WriteString(message)
 	assert.NoError(t, err)
 
-	ctx := context.Background()
-	_, err = fileSystem.CopyFile(original, destination).Await(ctx)
+	err = fileSystem.CopyFile(original, destination)
 	assert.NoError(t, err)
-	
+
 	content, err := afero.ReadFile(fileSystem.GetFs(), destination)
 	assert.NoError(t, err)
 
@@ -84,11 +82,10 @@ func TestCopySymlink(t *testing.T) {
 	defer fileSystem.GetFs().Remove(symlink)
 
 	// Copying file
-	ctx := context.Background()
-	_, err = fileSystem.CopyFile(symlink, destination).Await(ctx)
+	err = fileSystem.CopyFile(symlink, destination)
 	assert.NoError(t, err)
 	defer fileSystem.GetFs().Remove(destination)
-	
+
 	content, err := afero.ReadFile(fileSystem.GetFs(), destination)
 	assert.NoError(t, err)
 
