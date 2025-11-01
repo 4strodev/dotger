@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -96,7 +95,7 @@ func (fs *FileSystem) GetFs() afero.Fs {
 // creating destination directory. If the parent directory of
 // destination does not exits it will return an error.
 // If destination directory already exits, it return an error.
-func (fs *FileSystem) CopyDir(ctx context.Context, origin string, destination string) error {
+func (fs *FileSystem) CopyDir(origin string, destination string) error {
 	// Checking if provided paths exists
 	originStat, err := fs.fs.Stat(origin)
 	if err != nil {
@@ -153,23 +152,28 @@ func (fs *FileSystem) CopyDir(ctx context.Context, origin string, destination st
 
 	// Dispatching IO operations
 	for _, file := range files {
+		file := file
 		wg.Add(1)
-		go func(file os.FileInfo, errChannel chan error) {
+		go func() {
 			defer wg.Done()
+
+			var err error
 			originName := path.Join(origin, file.Name())
 			destinationName := path.Join(destination, file.Name())
-			var err error
+
 			if file.IsDir() {
-				err = fs.CopyDir(ctx, originName, destinationName)
+				err = fs.CopyDir(originName, destinationName)
 			} else {
 				err = fs.CopyFile(originName, destinationName)
 			}
 
-			errChannel <- err
-
-		}(file, errChannel)
+			if err != nil {
+				errChannel <- err
+			}
+		}()
 	}
 
+	// closing channel when all goroutines finish
 	go func() {
 		wg.Wait()
 		close(errChannel)
